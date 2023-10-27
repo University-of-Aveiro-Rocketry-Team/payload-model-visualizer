@@ -1,0 +1,32 @@
+#face-buttons-table {
+	width: unset !important;
+	height: unset !important;
+	column-gap: 20px;
+ 	display: flex;
+}
+
+#buttons {
+	position: fixed;
+	bottom: 20px;
+	right: 0;
+	width: fit-content;
+	padding: 20px;
+	left: 0;
+	margin: auto;
+	opacity: 0.3;
+	transition: opacity 0.3s;
+}
+
+#buttons:hover {
+	opacity: 1;
+}
+
+.face-button {
+	width: 80px;
+  	height: 80px;
+	background-size: contain !important;
+}
+
+.face-button > img {
+	width: 100%;
+}

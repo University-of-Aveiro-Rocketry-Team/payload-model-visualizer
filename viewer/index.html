@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <LINK rel="stylesheet" href="meshviewer/meshviewer.css" type="text/css">
+    <LINK rel="stylesheet" href="meshviewer/lib/jquery-ui/jquery-ui.min.css" type="text/css">
+    <LINK rel="stylesheet" href="index.css" type="text/css">
+    <title>Payload 3D Viewer</title>
+</head>
+
+<body>
+    <script src="meshviewer/lib/jquery/jquery.min.js"></script>
+    <script src="meshviewer/lib/jquery-ui/jquery-ui.min.js"></script>
+    <script src="meshviewer/lib/threejs/three.min.js"></script>
+
+    <script src="meshviewer/lib/threejs/loaders/BinaryLoader.js"></script>
+    <script src="meshviewer/lib/threejs/loaders/MTLLoader.js"></script>
+    <script src="meshviewer/lib/threejs/loaders/OBJMTLLoader.js"></script>
+
+    <script src="meshviewer/lib/threejs/loaders/UTF8Loader.js"></script>
+
+    <script src="meshviewer/lib/threejs/loaders/ctm/lzma.js"></script>
+    <script src="meshviewer/lib/threejs/loaders/ctm/CTMLoader.js"></script>
+
+    <script src="meshviewer/lib/threejs/Detector.js"></script>
+    <script src="meshviewer/lib/threejs/TrackballControls.js"></script>
+    <script src="meshviewer/lib/threejs/libs/stats.min.js"></script>
+
+    <script id="objectView" src="meshviewer/meshviewer.js"></script>
+    
+    <script src="scripts/customs.js"></script>
+    <script src="scripts/index.js"></script>
+
+    <script>
+        meshviewer({
+            'meshFile' : 'objects/Estrutura.obj',
+            'mtlFile' : 'objects/Estrutura.mtl',
+            'container':'#viewer',
+            'format':'obj'
+        });
+    </script>
+
+
+    <div id="viewer"></div>
+    <div id="progress"></div>
+
+    <div id="buttons">
+        <div id="face-buttons">
+            <div class="buttons-detail">
+                <div id="face-buttons-table">
+                    <div class="face-button" onclick="javascript:customRotateLeft(rotationIntensity)"><img src="meshviewer/assets/icons/32/sq_prev_icon&32.png" alt=""></div>
+                    <div class="face-button" id="face-button-5" onclick="javascript:customFront()"></div>
+                    <div class="face-button" onclick="javascript:customRotateRight(rotationIntensity)"><img src="meshviewer/assets/icons/32/sq_next_icon&32.png" alt=""></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
