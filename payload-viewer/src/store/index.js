@@ -1,4 +1,5 @@
 import { createStore } from 'vuex'
+import { $mqtt } from 'vue-paho-mqtt'
 
 export default createStore({
 	state: {
@@ -7,6 +8,7 @@ export default createStore({
 			lat: 0,
 			lng: 0
 		},
+		topics: ['gps', 'gyroscope']
 	},
 	mutations: {
 		UPDATE_POSITIONS(state, positions) {
@@ -14,26 +16,18 @@ export default createStore({
 		},
 		UPDATE_HOME(state, position) {
 			state.home = position
-		}
+		},
 	},
 	actions: {
 		// function on start up to setup default values of store
 		async initializeApp(context) {
-			let socket = new WebSocket(BACKEND_WEBSOCKET_URL);
-			socket.onopen = function(e) {
-				console.log("[open] Connection established");
-			};
-			socket.onclose = function(e) {
-				console.log("[close] Connection closed");
-			}
-			socket.onerror = function(e) {
-				console.log("[error] Connection error");
-			}
-			socket.onmessage = function(event) {
-				let data = JSON.parse(event.data)
-				
-			}
+			
+			// subscribe to topics
+			context.state.topics.forEach(topic =>
+				$mqtt.subscribe(topic, data => 
+					context.commit(`handle${topic.toUpperCase()}`, JSON.parse(data)), false));
 		},
+
 		addPosition(context, position) {
 			context.commit(
 				'UPDATE_POSITIONS',
@@ -45,6 +39,14 @@ export default createStore({
 				'UPDATE_HOME',
 				position
 			)
+		},
+
+		// handle messages from subscribed topics
+		handleGPS(context, data) {
+			context.dispatch('addPosition', data)
+		},
+		handleGYROSCOPE(context, data) {
+			console.log(data)
 		}
 	},
 	getters: {
