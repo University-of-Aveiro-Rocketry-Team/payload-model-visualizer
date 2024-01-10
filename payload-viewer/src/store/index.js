@@ -5,10 +5,23 @@ export default createStore({
 	state: {
 		positions: [],
 		home: {
-			lat: 0,
-			lng: 0
+			lat: 40.63493931,
+			lng: -8.65992687
 		},
-		topics: ['gps', 'gyroscope']
+		topics: ['gps', 'gyroscope', 'test'],
+
+		// map
+		// urlTemplate: 'https://mt.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+		//urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+		//urlTemplate: 'https://api.maptiler.com/maps/satellite/{z}/{x}/{y}.jpg?key=FDT6XiwQcKCTV2xSelE4',
+		urlTemplate: `https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.png?access_token=${MAP_KEY}`,
+		// urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+		mapAttribution: `
+			<a href="https://www.mapbox.com/about/maps/">© Mapbox </a> |
+			<a href="http://www.openstreetmap.org/copyright">© OpenStreetMap </a> |
+			<a href="https://www.mapbox.com/map-feedback/" target="_blank"><strong>Improve this map</strong></a>
+		`,
+
 	},
 	mutations: {
 		UPDATE_POSITIONS(state, positions) {
@@ -46,6 +59,9 @@ export default createStore({
 			context.dispatch('addPosition', data)
 		},
 		handleGYROSCOPE(context, data) {
+			console.log(data)
+		},
+		handleTEST(context, data) {
 			console.log(data)
 		}
 	},

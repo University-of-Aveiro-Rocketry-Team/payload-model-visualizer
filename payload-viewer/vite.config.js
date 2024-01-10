@@ -14,6 +14,7 @@ export default defineConfig({
     BROKER_PORT: `${process.env.BROKER_PORT}`,
     BROKER_USERNAME: `"${process.env.BROKER_USERNAME}"`,
     BROKER_PASSWORD: `"${process.env.BROKER_PASSWORD}"`,
+    MAP_KEY: `"${process.env.MAP_KEY}"`,
   },
   plugins: [
     vue(),
