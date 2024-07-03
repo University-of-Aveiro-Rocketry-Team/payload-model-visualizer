@@ -4,11 +4,17 @@ import { $mqtt } from 'vue-paho-mqtt'
 export default createStore({
 	state: {
 		positions: [],
+		payloadMarker: {
+			lat: 40.63493931,
+			lng: -8.65992687,
+		},
+		
 		home: {
 			lat: 40.63493931,
 			lng: -8.65992687
 		},
-		topics: ['gps', 'gyroscope', 'test'],
+		// topics: ['gps', 'gyroscope', 'test'],
+		topics: ['/telem/drone01', 'gyroscope', 'test'],
 
 		// map
 		// urlTemplate: 'https://mt.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
@@ -24,21 +30,65 @@ export default createStore({
 
 	},
 	mutations: {
+		// handle messages from subscribed topics
+		// handleGPS(state, data) {
+		handleTELEM(state, data) {
+			data = data['coords']
+			const lat = data[0]
+			const lng = data[1]
+
+			state.payloadMarker.lat = lat
+			state.payloadMarker.lng = lng
+
+			const position = {
+				lat: lat,
+				lng: lng,
+				timestamp: new Date()
+			}
+			
+			// state.payloadMarker.lat = data.lat
+			// state.payloadMarker.lng = data.lng
+
+			// const position = {
+			// 	lat: data.lat,
+			// 	lng: data.lng,
+			// }
+			state.positions = [...state.positions, position]
+
+			// console.log(state.payloadMarker)
+		
+		},
+		handleGYROSCOPE(state, data) {
+			console.log(data)
+		},
+		handleTEST(state, data) {
+			console.log(data)
+		},
+		
+
+		// update store values
 		UPDATE_POSITIONS(state, positions) {
 			state.positions = positions
 		},
 		UPDATE_HOME(state, position) {
 			state.home = position
 		},
+
+		resetPositions(state) {
+			state.positions = []
+		}
 	},
 	actions: {
 		// function on start up to setup default values of store
 		async initializeApp(context) {
 			
 			// subscribe to topics
-			context.state.topics.forEach(topic =>
-				$mqtt.subscribe(topic, data => 
-					context.commit(`handle${topic.toUpperCase()}`, JSON.parse(data)), false));
+			context.state.topics.forEach(topic => {
+				$mqtt.subscribe(topic, data => {
+					// console.log(topic, data, `handle${topic.toUpperCase().split("/")[1]}`);
+					context.commit(`handle${topic.toUpperCase().split("/")[1]}`, JSON.parse(data));
+				}, false)
+			});
 		},
 
 		addPosition(context, position) {
@@ -54,16 +104,6 @@ export default createStore({
 			)
 		},
 
-		// handle messages from subscribed topics
-		handleGPS(context, data) {
-			context.dispatch('addPosition', data)
-		},
-		handleGYROSCOPE(context, data) {
-			console.log(data)
-		},
-		handleTEST(context, data) {
-			console.log(data)
-		}
 	},
 	getters: {
 		positions: state => state.positions,
