@@ -2,34 +2,50 @@
     <div :id="this.mapContainerId"></div>
 
     <!-- SLIDER -->
-    <div class="history-slider">
-        <div class="history-buttons" ref="historyButtons">
-            <div id="play" :class="{'history-button-selected': !historyPlaying}"><img :src="playIcon" alt="Play" @click="playHistory"></div>
-            <div id="pause" :class="{'history-button-selected': historyPlaying}"><img :src="pauseIcon" alt="Pause" @click="pauseHistory"></div>
-        </div>
-        <input type="range" min="0" max="100" id="history" v-model="historyRange" ref="historyInput" @mouseenter="handleHistoryRangeIn" @mouseleave="handleHistoryRangeOut" @input="handleHistoryRangeInput">
-        <div class="info" :style="{ left: infoPosition + 'px' }" @mouseenter="handleInfoIn" @mouseleave="handleInfoOut" @click="handleInfoClick">
-            <div class="info-wrapper">
-                <div class="info-arrow"></div>
-                <div ref="infoText">{{ historyRange == 100 ? "Live" : historyRange+"%" }}</div>
+    <div class="history">
+        <div class="slider-row history-info">
+            <!-- DATA CONTAINER -->
+            <div class="data">
+                <div class="items">
+                    <div class="item">
+                        <div><b>Positions:</b> </div><div>{{ positions }}</div>
+                    </div>
+                    <!-- <div class="item">
+                        <div>Start: </div><div>{{ startTimestamp?.toLocaleString().split(",")[1] }}</div>
+                    </div>
+                    <div class="item">
+                        <div>Latest: </div><div>{{ lastTimestamp?.toLocaleString().split(",")[1] }}</div>
+                    </div> -->
+                </div>
+                <div class="data-buttons">
+                    <button @click="backToLive">Back to Live</button>
+                    <button @click="resetPositions">Reset</button>
+                </div>
             </div>
+            <MultiRangeSlider
+                :min="hMinValue"
+                :max="hMaxValue"
+                :minValue="hBarMinValue"
+                :maxValue="hBarMaxValue"
+                :labels="hoursLabel"
+                :min-caption="hoursMinCaption"
+                :max-caption="hoursMaxCaption"
+                :step="5"
+                @input="updateHoursValues"
+            />
         </div>
-    </div>
-
-    <!-- DATA CONTAINER -->
-    <div class="data">
-        <div class="item">
-            <div>Positions: </div><div>{{ positions }}</div>
-        </div>
-        <div class="item">
-            <div>Start: </div><div>{{ startTimestamp?.toLocaleString().split(",")[1] }}</div>
-        </div>
-        <div class="item">
-            <div>Latest: </div><div>{{ lastTimestamp?.toLocaleString().split(",")[1] }}</div>
-        </div>
-        <div class="data-buttons">
-            <button @click="historyRange = 100">Back to Live</button>
-            <button @click="resetPositions">Reset</button>
+        <div class="slider-row history-slider">
+            <div class="history-buttons" ref="historyButtons">
+                <div id="play" :class="{'history-button-selected': !historyPlaying}"><img :src="playIcon" alt="Play" @click="playHistory"></div>
+                <div id="pause" :class="{'history-button-selected': historyPlaying}"><img :src="pauseIcon" alt="Pause" @click="pauseHistory"></div>
+            </div>
+            <input type="range" min="0" max="100" id="history" v-model="historyRange" ref="historyInput" @mouseenter="handleHistoryRangeIn" @mouseleave="handleHistoryRangeOut" @input="handleHistoryRangeInput">
+            <div class="info" :style="{ left: infoPosition + 'px' }" @mouseenter="handleInfoIn" @mouseleave="handleInfoOut" @click="backToLive">
+                <div class="info-wrapper">
+                    <div class="info-arrow"></div>
+                    <div ref="infoText">{{ historyRange == 100 ? "Live" : historyRangeLabel }}</div>
+                </div>
+            </div>
         </div>
     </div>
 </template>
@@ -39,11 +55,16 @@
     import { tileLayerOffline } from 'leaflet.offline';
     import 'leaflet.fullscreen';
 
+    import MultiRangeSlider from "multi-range-slider-vue";
+
     import payloadMarkerIcon from '@/assets/payload-marker.png';
     import playIcon from '@/assets/play.png';
     import pauseIcon from '@/assets/pause.png';
 
     export default {
+        components: {
+            MultiRangeSlider,
+        },
         data(){
             return{
                 map: null,
@@ -70,6 +91,11 @@
 
                 startTimestamp: null,
                 lastTimestamp: null,
+
+                hMinValue: 0,
+                hMaxValue: 720,
+                hBarMinValue: 120,
+                hBarMaxValue: 600,
             }
         },
         props: {
@@ -176,8 +202,8 @@
             },
             updateInfoPosition() {
                 const inputWidth = this.$refs.historyInput.offsetWidth;
-                const left = this.$refs.historyButtons.offsetWidth - 10;
-                const offset = -0.02 * (this.historyRange / 100 - 0.5);
+                const left = this.$refs.historyButtons.offsetWidth - 20;
+                const offset = -0.019 * (this.historyRange / 100 - 0.5);
                 this.infoPosition = inputWidth * (this.historyRange / 100 + offset) + left;
             },
 
@@ -207,16 +233,26 @@
                 this.historyPlaying = false;
             },
 
+
+            updateHoursValues(e) {
+                this.hBarMinValue = e.minValue;
+                this.hBarMaxValue = e.maxValue;
+            },
+
+
             // EVENTS
             handleInfoIn() {
                 if (this.historyRange != 100)
                     this.$refs.infoText.innerText = "Live";
             },
             handleInfoOut() {
-                this.$refs.infoText.innerText = this.historyRange == 100 ? "Live" : this.historyRange+"%";
+                console.log(this.historyRangeLabel);
+                this.$refs.infoText.innerText = this.historyRange == 100 ? "Live" : this.historyRangeLabel;
             },
-            handleInfoClick() {
+            backToLive() {
                 if (this.historyRange != 100) {
+                    this.pauseHistory();
+                    
                     this.historyRange = 100;
                     this.updateInfoPosition();
                 }
@@ -289,6 +325,36 @@
 
                 this.updateInfoPosition();
             }
+        },
+        computed: {
+            hoursLabel() {
+                let labels = [];
+                for (let i = 0; i <= 12; i++) {
+                    labels.push(`${i.toString().length === 1 ? "0" : ""}${i}:00`);
+                }
+                return labels;
+            },
+            hoursMinCaption() {
+                let h = Math.floor(this.hBarMinValue / 60);
+                let m = this.hBarMinValue % 60;
+                let hh = h.toString().length === 1 ? "0" : "";
+                let mm = m.toString().length === 1 ? "0" : "";
+                return `${hh}${h}:${mm}${m}`;
+            },
+            hoursMaxCaption() {
+                let h = Math.floor(this.hBarMaxValue / 60);
+                let m = this.hBarMaxValue % 60;
+                let hh = h.toString().length === 1 ? "0" : "";
+                let mm = m.toString().length === 1 ? "0" : "";
+                return `${hh}${h}:${mm}${m}`;
+            },
+            historyRangeLabel() {
+                const index = Math.floor(this.$store.state.positions.length * this.historyRange / 100);
+                const timestamp = this.$store.state.positions[index]?.timestamp;
+                const label = timestamp?.getHours() + ":" + timestamp?.getMinutes() + ":" + timestamp?.getSeconds();
+                console.log(label, index);
+                return label;
+            }
         }
 		
     }
@@ -324,21 +390,30 @@
         font-weight: bold;
     }
 
-    .history-slider {
+    .history {
         position: absolute;
         top: 0;
         left: 0;
         z-index: 10;
         width: 100%;
         text-align: center;
-        margin-top: 10px;
+        padding-top: 10px;
         display: flex;
         align-content: center;
+        flex-direction: column;
+        row-gap: 20px;
+        padding: 15px 0;
+        -webkit-transition: .2s;
+        transition: .2s;
     }
 
-    .history-slider input {
+    .history input {
         width: 93%;
         margin: auto;
+    }
+
+    .history .slider-row {
+
     }
 
     #history {
@@ -366,13 +441,13 @@
         height: 40px !important;
     }
 
-    .history-slider-extended + .info {
-        top: 20px !important;
+    .history-slider {
+        display: flex;
     }
 
-    #history:hover, #history:hover + .info, .info:hover {
-        opacity: 1; /* Fully shown on mouse-over */
-    }
+    /* #history:hover, #history:hover + .info, .info:hover {
+        opacity: 1;
+    } */
 
     #history::-webkit-slider-thumb {
         -webkit-appearance: none; /* Override default look */
@@ -392,6 +467,7 @@
         -webkit-transition: .2s; /* 0.2 seconds transition on hover */
         transition: .2s;
         cursor: pointer; /* Cursor on hover */
+        border: unset;
     }
 
     .info {
@@ -404,7 +480,7 @@
     
     .info-wrapper {
         background-color: #d3d3d3;
-        width: 70px;
+        width: 90px;
         height: 40px;
         position: absolute;
         padding: 5px 10px;
@@ -455,43 +531,110 @@
     }
 
     .history-buttons > div img:hover, .history-button-selected {
-        opacity: 0.8;
+        opacity: 1 !important;
+    }
+
+    .history-button-selected img {
+        filter: invert(57%) sepia(85%) saturate(330%) hue-rotate(73deg) brightness(100%) contrast(89%) !important;
+    }
+
+    .history-info {
+        display: flex;
+        column-gap: 20px;
+        padding: 0px 20px;
     }
 
     .data {
-        position: absolute;
-        left: 0;
-        bottom: 0;
-        z-index: 10;
         background-color: #d3d3d3;
         padding: 10px 20px;
         font-size: 18px;
+        display: flex;
+        align-items: center;
+        column-gap: 30px;
+        border-radius: 10px;
     }
 
     .data .item {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        column-gap: 40px;
+        column-gap: 20px;
+        color: #555;
     }
 
     .data-buttons {
         display: flex;
-        justify-content: space-between;
-        margin-top: 15px;
+        flex-direction: row;
+        align-items: center;
+        column-gap: 10px;
     }
 
     .data-buttons button {
-        padding: 5px 10px;
+        padding: 10px 10px;
         border-radius: 5px;
         cursor: pointer;
         background-color: #4CAF50;
         color: white;
         border: none;
         font-size: 18px;
+        width: 150px;
     }
 
     .data-buttons button:hover {
         background-color: #45a049;
+    }
+    
+    .MultiRangeSliderContainer {
+        margin: auto;
+        width: 800px;
+    }
+
+    .slider-row .multi-range-slider {
+        background-color: #d3d3d3;
+        opacity: 0.6;
+        -webkit-transition: .2s; /* 0.2 seconds transition on hover */
+        transition: .2s;
+        width: 100%;
+        box-shadow: unset;
+        border: unset;
+        padding: 25px 20px;
+    }
+
+    .history:hover .slider-row .multi-range-slider, .history:hover #history, .history:hover .info, .history:hover .history-buttons > div img {
+        opacity: 1 !important;
+    }
+    
+    .history:hover .history-buttons > div {
+        filter: drop-shadow(0px 0px 10px rgba(0,0,0,0.5));
+    }
+
+    .history:hover {
+        background-color: rgba(255,255,255,0.6);
+    }
+
+    .slider-row .multi-range-slider .bar-inner {
+        background-color: #4CAF50;
+        box-shadow: unset;
+        border: unset;
+    }
+
+    .slider-row .multi-range-slider .thumb::before {
+        box-shadow: unset;
+        border: unset;
+        background-color: #4CAF50;
+        border-radius: 5px;
+        margin-top: -6px;
+    }
+
+    .slider-row .multi-range-slider .sub-ruler .ruler-sub-rule, .slider-row .multi-range-slider .ruler .ruler-rule {
+        border-color: #939393;
+    }
+
+    .slider-row .multi-range-slider .bar-left, .slider-row .multi-range-slider .bar-right {
+        box-shadow: unset;
+    }
+
+    .slider-row .multi-range-slider .labels {
+        color: #555;
     }
 </style>
