@@ -2,7 +2,7 @@
     <div :id="this.mapContainerId"></div>
 
     <!-- SLIDER -->
-    <div class="history">
+    <div class="history" @mouseenter="updateChart=true" @mouseleave="updateChart=false">
         <div class="slider-row history-info">
             <!-- DATA CONTAINER -->
             <div class="data">
@@ -10,12 +10,6 @@
                     <div class="item">
                         <div><b>Positions:</b> </div><div>{{ positions }}</div>
                     </div>
-                    <!-- <div class="item">
-                        <div>Start: </div><div>{{ startTimestamp?.toLocaleString().split(",")[1] }}</div>
-                    </div>
-                    <div class="item">
-                        <div>Latest: </div><div>{{ lastTimestamp?.toLocaleString().split(",")[1] }}</div>
-                    </div> -->
                 </div>
                 <div class="data-buttons">
                     <button @click="backToLive">Back to Live</button>
@@ -28,9 +22,12 @@
                 :minValue="hBarMinValue"
                 :maxValue="hBarMaxValue"
                 :labels="hoursLabel"
-                :min-caption="hoursMinCaption"
-                :max-caption="hoursMaxCaption"
-                :step="5"
+                :min-caption="minutesMinCaption"
+                :max-caption="minutesMaxCaption"
+                :step="step"
+                :stepOnly="true"
+                :canMinMaxValueSame="true"
+                :subSteps="false"
                 @input="updateHoursValues"
             />
         </div>
@@ -39,12 +36,19 @@
                 <div id="play" :class="{'history-button-selected': !historyPlaying}"><img :src="playIcon" alt="Play" @click="playHistory"></div>
                 <div id="pause" :class="{'history-button-selected': historyPlaying}"><img :src="pauseIcon" alt="Pause" @click="pauseHistory"></div>
             </div>
-            <input type="range" min="0" max="100" id="history" v-model="historyRange" ref="historyInput" @mouseenter="handleHistoryRangeIn" @mouseleave="handleHistoryRangeOut" @input="handleHistoryRangeInput">
-            <div class="info" :style="{ left: infoPosition + 'px' }" @mouseenter="handleInfoIn" @mouseleave="handleInfoOut" @click="backToLive">
-                <div class="info-wrapper">
-                    <div class="info-arrow"></div>
-                    <div ref="infoText">{{ historyRange == 100 ? "Live" : historyRangeLabel }}</div>
+            <div class="slider-wrapper">
+                <input type="range" min="0" max="100" id="history" v-model="historyRange" ref="historyInput" @mouseenter="handleHistoryRangeIn" @mouseleave="handleHistoryRangeOut" @input="handleHistoryRangeInput" @change="handleLive">
+                <div :class="`info ${toolTipPos}`" :style="{ left: infoPosition + 'px' }" @mouseenter="handleInfoIn" @mouseleave="updateToolTip" @click="backToLive">
+                    <div class="info-wrapper">
+                        <div class="info-arrow"></div>
+                        <div ref="infoText">{{ toolTipLabel(historyRangeLabel) }}</div>
+                    </div>
                 </div>
+                <!--
+                <div id="densityChart">
+                    <apexchart type="area" height="75" :options="chartOptions" :series="series"></apexchart>
+                </div>
+                -->
             </div>
         </div>
     </div>
@@ -56,14 +60,18 @@
     import 'leaflet.fullscreen';
 
     import MultiRangeSlider from "multi-range-slider-vue";
+    import VueApexCharts from "vue3-apexcharts";
 
     import payloadMarkerIcon from '@/assets/payload-marker.png';
     import playIcon from '@/assets/play.png';
     import pauseIcon from '@/assets/pause.png';
 
+    // import haversine from 'haversine-distance'
+
     export default {
         components: {
             MultiRangeSlider,
+            apexchart: VueApexCharts,
         },
         data(){
             return{
@@ -83,6 +91,11 @@
 
                 infoPosition: 0,
                 positions: 0,
+                posList: [],
+                posListScaled: [],
+
+                density: [0],
+                updateChart: false,
 
                 playIcon: playIcon,
                 pauseIcon: pauseIcon,
@@ -92,10 +105,62 @@
                 startTimestamp: null,
                 lastTimestamp: null,
 
+                numberOfMinutes: 0,
                 hMinValue: 0,
-                hMaxValue: 720,
-                hBarMinValue: 120,
-                hBarMaxValue: 600,
+                hMaxValue: 3,
+                hBarMinValue: 1,
+                hBarMaxValue: 2,
+                step: 1,
+                scaled: false,
+
+                series: [
+                    {
+                        name: "Series 1",
+                        data: [],
+                    }
+                ],
+                chartOptions: {
+                    chart: {
+                        type: 'area',
+                        id: 'areachart',
+                        toolbar: {
+                            show: false,
+                        },
+                    },
+                    fill: {
+                        colors: ['#4CAF50'],
+                        type: 'solid',
+                        opacity: 0.5,
+                    },
+                    grid: {
+                        show: false,
+                    },  
+                    xaxis: {
+                        labels: {
+                            show: false
+                        },
+                        axisBorder: {
+                            show: false
+                        },
+                    },
+                    yaxis: {
+                        labels: {
+                            show: false
+                        },
+                        reversed: true,
+                        axisBorder: {
+                            show: false
+                        },
+                    },
+                    dataLabels: {
+                        enabled: false
+                    },
+                    stroke: {
+                        curve: 'smooth',
+                        width: 2,
+                        colors: ['#4CAF50'],
+                    },
+                },
             }
         },
         props: {
@@ -202,7 +267,7 @@
             },
             updateInfoPosition() {
                 const inputWidth = this.$refs.historyInput.offsetWidth;
-                const left = this.$refs.historyButtons.offsetWidth - 20;
+                const left = this.$refs.historyButtons.offsetWidth - 100;
                 const offset = -0.019 * (this.historyRange / 100 - 0.5);
                 this.infoPosition = inputWidth * (this.historyRange / 100 + offset) + left;
             },
@@ -214,7 +279,7 @@
                 let i = this.historyRange; 
                 this.historyPlaying = true;
                 this.historyPlayInterval = setInterval(() => {
-                    const positions = this.$store.state.positions.slice(0, this.$store.state.positions.length * this.historyRange / 100);
+                    const positions = this.posListScaled.slice(0, this.posListScaled.length * this.historyRange / 100);
                     this.positions = positions.length;
                     console.log(positions, i);
                     this.historyTrail(positions, i);
@@ -237,17 +302,54 @@
             updateHoursValues(e) {
                 this.hBarMinValue = e.minValue;
                 this.hBarMaxValue = e.maxValue;
+                
+                this.scaled = !(this.hBarMinValue == this.hMinValue && this.hBarMaxValue == this.hMaxValue);
+
+                this.updateToolTip();
             },
 
+            // parse time from slider
+            parseTime(value) {
+                const min = this.startTimestamp;
+                const date = new Date(min);
+                date.setMinutes(date.getMinutes() + value);
+                date.setSeconds(0);
+                return date;
+            },
+
+            toolTipLabel(label) {
+                return this.historyRange == 100 && !this.scaled ? "Live" : label;
+            },
+
+            // positionDensity(index) {
+            //     const positions = this.$store.state.positions;
+            //     const offset = 20;
+            //     const pos = positions[index-1];
+            //     let p1, p2, distance, prev;
+            //     // console.log(index, offset, positions.length);
+            //     if (index > offset-1) {
+            //         prev = positions[index-offset];
+            //         p1 = { lat: prev.lat, lon: prev.lng };
+            //         p2 = { lat: pos.lat, lon: pos.lng };
+            //         distance = haversine(p1, p2);
+            //         this.density.push(distance);
+            //     }
+            // },
 
             // EVENTS
             handleInfoIn() {
                 if (this.historyRange != 100)
                     this.$refs.infoText.innerText = "Live";
             },
-            handleInfoOut() {
+            updateToolTip() {
                 console.log(this.historyRangeLabel);
-                this.$refs.infoText.innerText = this.historyRange == 100 ? "Live" : this.historyRangeLabel;
+                this.$refs.infoText.innerText = this.toolTipLabel(this.historyRangeLabel);
+            },
+            handleLive() {
+                this.updateChart = true;
+                if (this.historyRange != 100 && this.$refs.infoText.innerText == "Live") {
+                    this.historyRange = 100;
+                }
             },
             backToLive() {
                 if (this.historyRange != 100) {
@@ -264,6 +366,7 @@
                 this.$refs.historyInput.classList.remove('history-slider-extended');
             },
             handleHistoryRangeInput() {
+                this.updateChart = false;
                 this.pauseHistory();
             },
             resetPositions() {
@@ -274,9 +377,13 @@
                     this.updateInfoPosition();
 
                     this.$store.commit('resetPositions');
+                    this.positions = 0;
+                    this.density = [0];
 
                     this.startTimestamp = this.$store.state.positions[0].timestamp;
                     this.lastTimestamp = this.$store.state.positions[this.$store.state.positions.length-1].timestamp;
+                    this.posList = this.$store.state.positions;
+                    this.posListScaled = this.posList;
                 }
             }
 		},
@@ -290,8 +397,10 @@
             
             this.updateInfoPosition();
 
-            this.startTimestamp = this.$store.state.positions[0]?.timestamp;
-            this.lastTimestamp = this.$store.state.positions[this.$store.state.positions.length-1]?.timestamp;
+            this.posList = this.$store.state.positions;
+            this.posListScaled = this.posList;
+            this.startTimestamp = this.posList[0]?.timestamp;
+            this.lastTimestamp = this.posList[this.$store.state.positions.length-1]?.timestamp;
 
             window.addEventListener('keydown', (e) => {
                 if (e.key == ' ') {
@@ -306,12 +415,31 @@
             '$store.state.payloadMarker': {
                 handler(marker) {
                     if (this.live) {
-                        this.positions = this.$store.state.positions.length;
+                        this.posList = this.$store.state.positions;
                         this.updateMainMarker(marker);
-                        this.updateTrail(this.$store.state.positions);
+                        this.updateTrail(this.posList);
 
-                        this.startTimestamp = this.$store.state.positions[0]?.timestamp;
-                        this.lastTimestamp = this.$store.state.positions[this.$store.state.positions.length-1]?.timestamp;
+                        this.startTimestamp = this.posList[0]?.timestamp;
+                        this.lastTimestamp = this.posList[this.$store.state.positions.length-1]?.timestamp;
+
+                        this.numberOfMinutes = Math.ceil((this.lastTimestamp - this.startTimestamp) / 1000 / 60);
+                        this.hMaxValue = this.numberOfMinutes;
+                        if (!this.scaled) {
+                            this.hBarMinValue = 0;
+                            this.hBarMaxValue = this.numberOfMinutes;
+                        }
+                        
+                        if (this.scaled) {
+                            const minHours = this.parseTime(this.hBarMinValue);
+                            const maxHours = this.parseTime(this.hBarMaxValue);
+                            const firstValue = this.posList.findIndex((pos) => pos.timestamp >= minHours);
+                            const lastValue = this.posList.findIndex((pos) => pos.timestamp >= maxHours);
+                            this.posListScaled = this.posList.slice(firstValue, lastValue);
+                        }
+                        else
+                            this.posListScaled = this.posList;
+
+                        this.positions = this.posListScaled.length;
                     }
                 },
                 deep: true,
@@ -319,29 +447,41 @@
             historyRange(value, old) {
                 this.live = value == 100;
 
-                const positions = this.$store.state.positions;
+                const positions = this.posListScaled;
                 const percentage = positions.length * value / 100;
                 this.historyTrail(positions, percentage);
 
                 this.updateInfoPosition();
-            }
+            },
+            // positions(value) {
+            //     this.positionDensity(this.positions);
+            //     console.log(this.updateChart);
+            //     if (this.updateChart) {
+            //         // make value not reactive
+            //         const value = this.density.slice(0);
+            //         this.series[0].data = value;
+            //     }
+            // }
         },
         computed: {
             hoursLabel() {
-                let labels = [];
-                for (let i = 0; i <= 12; i++) {
-                    labels.push(`${i.toString().length === 1 ? "0" : ""}${i}:00`);
+                const labels = [];
+                for (let i = 0; i < this.numberOfMinutes+1; i+=this.step) {
+                    const date = this.parseTime(i);
+                    const label = date.toLocaleTimeString('pt-PT', {hour: '2-digit', minute: '2-digit'});
+                    labels.push(label);
                 }
+
                 return labels;
             },
-            hoursMinCaption() {
+            minutesMinCaption() {
                 let h = Math.floor(this.hBarMinValue / 60);
                 let m = this.hBarMinValue % 60;
                 let hh = h.toString().length === 1 ? "0" : "";
                 let mm = m.toString().length === 1 ? "0" : "";
                 return `${hh}${h}:${mm}${m}`;
             },
-            hoursMaxCaption() {
+            minutesMaxCaption() {
                 let h = Math.floor(this.hBarMaxValue / 60);
                 let m = this.hBarMaxValue % 60;
                 let hh = h.toString().length === 1 ? "0" : "";
@@ -349,11 +489,22 @@
                 return `${hh}${h}:${mm}${m}`;
             },
             historyRangeLabel() {
-                const index = Math.floor(this.$store.state.positions.length * this.historyRange / 100);
-                const timestamp = this.$store.state.positions[index]?.timestamp;
-                const label = timestamp?.getHours() + ":" + timestamp?.getMinutes() + ":" + timestamp?.getSeconds();
-                console.log(label, index);
+                let index = Math.floor(this.posListScaled.length * this.historyRange / 100 - 1);
+                index = index < 0 ? 0 : index;
+                const timestamp = this.posListScaled[index]?.timestamp;
+                console.log(timestamp, index, this.posListScaled[index], this.posListScaled.length, this.historyRange);
+                if (!timestamp)
+                    return "Live";
+
+                const label = timestamp?.toLocaleTimeString('pt-PT', {hour: '2-digit', minute: '2-digit', second: '2-digit'});
                 return label;
+            },
+            toolTipPos() {
+                const offset = 5;
+                let className = "";
+                if (this.historyRange < 0+offset) className = "info-left";
+                if (this.historyRange > 100-offset) className = "info-right";
+                return className;
             }
         }
 		
@@ -405,10 +556,11 @@
         padding: 15px 0;
         -webkit-transition: .2s;
         transition: .2s;
+        padding-bottom: 50px;
     }
 
     .history input {
-        width: 93%;
+        width: 97%;
         margin: auto;
     }
 
@@ -476,6 +628,23 @@
         -webkit-transition: .2s; /* 0.2 seconds transition on hover */
         transition: opacity .2s;
         cursor: pointer;
+        z-index: 1;
+    }
+
+    .info-right .info-wrapper {
+        margin-left: -30px !important;
+    }
+
+    .info-right .info-arrow {
+        left: 60px !important;
+    }
+
+    .info-left .info-wrapper {
+        margin-left: 30px !important;
+    }
+
+    .info-left .info-arrow {
+        right: 60px !important;
     }
     
     .info-wrapper {
@@ -600,16 +769,28 @@
         padding: 25px 20px;
     }
 
-    .history:hover .slider-row .multi-range-slider, .history:hover #history, .history:hover .info, .history:hover .history-buttons > div img {
+    .history:hover .slider-row .multi-range-slider,
+    .history:hover #history,
+    .history:hover .info,
+    .history:hover .history-buttons > div img {
         opacity: 1 !important;
     }
-    
+   
+    .history:hover #densityChart {
+        display: unset;
+    }
+
     .history:hover .history-buttons > div {
         filter: drop-shadow(0px 0px 10px rgba(0,0,0,0.5));
     }
 
     .history:hover {
         background-color: rgba(255,255,255,0.6);
+    }
+
+    .history:hover #history {
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
     }
 
     .slider-row .multi-range-slider .bar-inner {
@@ -637,4 +818,27 @@
     .slider-row .multi-range-slider .labels {
         color: #555;
     }
+
+    .slider-wrapper {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        position: relative;
+    }
+
+    #densityChart {
+        width: 99%;
+        position: absolute;
+        top: 4px;
+        transition: 0.2s;
+        -webkit-transition: 0.2s;
+        left: 0;
+        pointer-events: none;
+        display: none;
+    }
+
+    .slider-wrapper:hover #densityChart {
+        top: 18px !important;
+    }
+
 </style>
