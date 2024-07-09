@@ -16,20 +16,22 @@
                     <button @click="resetPositions">Reset</button>
                 </div>
             </div>
-            <MultiRangeSlider
-                :min="hMinValue"
-                :max="hMaxValue"
-                :minValue="hBarMinValue"
-                :maxValue="hBarMaxValue"
-                :labels="hoursLabel"
-                :min-caption="minutesMinCaption"
-                :max-caption="minutesMaxCaption"
-                :step="step"
-                :stepOnly="true"
-                :canMinMaxValueSame="true"
-                :subSteps="false"
-                @input="updateHoursValues"
-            />
+            <div class="multi-range-slider-wrapper" @mousedown="multiRangeSliderMouseDown" @mouseup="multiRangeSliderMouseUp" @mousemove="multiRangeSliderMovement">
+                <MultiRangeSlider
+                    :min="hMinValue"
+                    :max="hMaxValue"
+                    :minValue="hBarMinValue"
+                    :maxValue="hBarMaxValue"
+                    :labels="hoursLabel"
+                    :min-caption="hoursMinCaption"
+                    :max-caption="hoursMaxCaption"
+                    :step="step"
+                    :stepOnly="true"
+                    :canMinMaxValueSame="true"
+                    :subSteps="false"
+                    @input="updateScale"
+                />
+            </div>
         </div>
         <div class="slider-row history-slider">
             <div class="history-buttons" ref="historyButtons">
@@ -112,6 +114,7 @@
                 hBarMaxValue: 2,
                 step: 1,
                 scaled: false,
+                grabbingMultiRangeBar: false,
 
                 series: [
                     {
@@ -182,6 +185,7 @@
                 // Create Leaflet map
                 this.map = L.map(this.mapContainerId, {
                     fullscreenControl: true,
+                    keyboard: false,
                 });
 
 				console.log(this.urlTemplate);
@@ -299,13 +303,23 @@
             },
 
 
-            updateHoursValues(e) {
+            updateScale(e) {
                 this.hBarMinValue = e.minValue;
                 this.hBarMaxValue = e.maxValue;
                 
                 this.scaled = !(this.hBarMinValue == this.hMinValue && this.hBarMaxValue == this.hMaxValue);
 
                 this.updateToolTip();
+
+                this.scale();
+                this.positions = this.posListScaled.slice(0, this.posListScaled.length * this.historyRange / 100).length;
+            },
+            scale() {
+                const minHours = this.parseTime(this.hBarMinValue);
+                const maxHours = this.parseTime(this.hBarMaxValue);
+                const firstValue = this.posList.findIndex((pos) => pos.timestamp >= minHours);
+                const lastValue = this.posList.findIndex((pos) => pos.timestamp >= maxHours);
+                this.posListScaled = this.posList.slice(firstValue, lastValue);
             },
 
             // parse time from slider
@@ -352,12 +366,14 @@
                 }
             },
             backToLive() {
-                if (this.historyRange != 100) {
                     this.pauseHistory();
                     
                     this.historyRange = 100;
                     this.updateInfoPosition();
-                }
+
+                    this.live = true;
+
+                    this.resetScale();
             },
             handleHistoryRangeIn() {
                 this.$refs.historyInput.classList.add('history-slider-extended');
@@ -369,6 +385,45 @@
                 this.updateChart = false;
                 this.pauseHistory();
             },
+            multiRangeSliderMouseDown(e) {
+                this.grabbingMultiRangeBar = e.target.closest(".bar-inner") != null;
+            },
+            multiRangeSliderMouseUp() {
+                this.grabbingMultiRangeBar = false;
+            },
+            multiRangeSliderMovement(e) {
+                if (this.grabbingMultiRangeBar && (this.hBarMinValue > 0 || this.hBarMaxValue < this.hMaxValue)) {
+                    const steps = this.hMaxValue;
+                    const slider = e.target.closest(".multi-range-slider");
+                    const offset = parseFloat(window.getComputedStyle(slider).paddingLeft);
+                    const sliderRect = slider.getBoundingClientRect();
+
+                    const relativeX = e.clientX - sliderRect.left - offset;
+                    const relativeWidth = sliderRect.width - offset * 2 ;
+                    const relativePosition = relativeX / relativeWidth;
+
+                    console.log(steps, relativePosition);
+                    let step = Math.floor(steps * relativePosition);
+                    const range = this.hBarMaxValue - this.hBarMinValue;
+                    let newMax = step + range/2;
+                    let newMin = step - range/2;
+
+                    if (step == 0 && relativePosition > 0) {
+                        step = 1;
+                        newMin = 0;
+                        newMax = range;
+                    }
+                    
+                    console.log(step, newMin, newMax)
+
+                    if (newMin >= 0 && newMax <= this.hMaxValue) {
+                        this.hBarMinValue = newMin;
+                        this.hBarMaxValue = newMax;
+                    }
+                }
+            },
+
+
             resetPositions() {
                 const confirm = window.confirm("Are you sure you want to reset the positions?");
                 if (confirm) {
@@ -385,6 +440,12 @@
                     this.posList = this.$store.state.positions;
                     this.posListScaled = this.posList;
                 }
+            },
+            resetScale() {
+                this.hBarMinValue = 0;
+                this.hBarMaxValue = this.numberOfMinutes;
+                this.scaled = false;
+                this.posListScaled = this.posList;
             }
 		},
 		mounted() {
@@ -409,7 +470,42 @@
                     else
                         this.playHistory();
                 }
+
+                if (e.key == 'ArrowRight') {
+                    this.historyRange += 1;
+                    if (this.historyRange > 100)
+                        this.historyRange = 100;
+                }
+
+                if (e.key == 'ArrowLeft') {
+                    this.historyRange -= 1;
+                    if (this.historyRange < 0)
+                        this.historyRange = 0;
+                }
+
+                if (e.key == 'ArrowUp') {
+                    this.hBarMaxValue += 1;
+                    if (this.hBarMaxValue > this.hMaxValue)
+                        this.hBarMaxValue = this.hMaxValue;
+                }
+
+                if (e.key == 'ArrowDown') {
+                    this.hBarMaxValue -= 1;
+                    if (this.hBarMaxValue < this.hBarMinValue)
+                        this.hBarMaxValue = this.hBarMinValue;
+                }
+                
+                if (e.key >= '0' && e.key <= '9') {
+                    this.historyRange = e.key * 10;
+                }
+
+                if (e.key == 'Escape') {
+                    this.backToLive();
+                }
+
             });
+
+
 		},
         watch: {
             '$store.state.payloadMarker': {
@@ -427,17 +523,11 @@
                         if (!this.scaled) {
                             this.hBarMinValue = 0;
                             this.hBarMaxValue = this.numberOfMinutes;
-                        }
-                        
-                        if (this.scaled) {
-                            const minHours = this.parseTime(this.hBarMinValue);
-                            const maxHours = this.parseTime(this.hBarMaxValue);
-                            const firstValue = this.posList.findIndex((pos) => pos.timestamp >= minHours);
-                            const lastValue = this.posList.findIndex((pos) => pos.timestamp >= maxHours);
-                            this.posListScaled = this.posList.slice(firstValue, lastValue);
-                        }
-                        else
                             this.posListScaled = this.posList;
+                        }
+                        else {
+                            this.scale();
+                        }
 
                         this.positions = this.posListScaled.length;
                     }
@@ -474,14 +564,14 @@
 
                 return labels;
             },
-            minutesMinCaption() {
+            hoursMinCaption() {
                 let h = Math.floor(this.hBarMinValue / 60);
                 let m = this.hBarMinValue % 60;
                 let hh = h.toString().length === 1 ? "0" : "";
                 let mm = m.toString().length === 1 ? "0" : "";
                 return `${hh}${h}:${mm}${m}`;
             },
-            minutesMaxCaption() {
+            hoursMaxCaption() {
                 let h = Math.floor(this.hBarMaxValue / 60);
                 let m = this.hBarMaxValue % 60;
                 let hh = h.toString().length === 1 ? "0" : "";
@@ -492,7 +582,6 @@
                 let index = Math.floor(this.posListScaled.length * this.historyRange / 100 - 1);
                 index = index < 0 ? 0 : index;
                 const timestamp = this.posListScaled[index]?.timestamp;
-                console.log(timestamp, index, this.posListScaled[index], this.posListScaled.length, this.historyRange);
                 if (!timestamp)
                     return "Live";
 
@@ -758,15 +847,22 @@
         width: 800px;
     }
 
-    .slider-row .multi-range-slider {
-        background-color: #d3d3d3;
-        opacity: 0.6;
-        -webkit-transition: .2s; /* 0.2 seconds transition on hover */
-        transition: .2s;
+    .slider-row .multi-range-slider-wrapper {
         width: 100%;
+    }
+
+    .slider-row .multi-range-slider {
+        opacity: 0.6;
+        background-color: #d3d3d3;
         box-shadow: unset;
         border: unset;
         padding: 25px 20px;
+        -webkit-transition: .2s; /* 0.2 seconds transition on hover */
+        transition: .2s;
+    }
+
+    .slider-row .multi-range-slider .bar-inner {
+        cursor: pointer;
     }
 
     .history:hover .slider-row .multi-range-slider,
