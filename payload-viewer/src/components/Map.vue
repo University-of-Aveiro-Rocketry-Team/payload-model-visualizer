@@ -28,7 +28,6 @@
                     :step="step"
                     :stepOnly="true"
                     :canMinMaxValueSame="true"
-                    :subSteps="false"
                     @input="updateScale"
                 />
             </div>
@@ -45,6 +44,10 @@
                         <div class="info-arrow"></div>
                         <div ref="infoText">{{ toolTipLabel(historyRangeLabel) }}</div>
                     </div>
+                </div>
+                <div :class="`info-times ${historyRange >= 95 ? 'info-times-adjusted-right' : historyRange <= 5 ? 'info-times-adjusted-left' : ''}`">
+                    <div>{{ startTimestamp?.toLocaleTimeString('pt-PT', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) }}</div>
+                    <div>{{ $store.state.positions[this.$store.state.positions.length-1]?.timestamp?.toLocaleTimeString('pt-PT', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) }}</div>
                 </div>
                 <!--
                 <div id="densityChart">
@@ -109,9 +112,9 @@
 
                 numberOfMinutes: 0,
                 hMinValue: 0,
-                hMaxValue: 3,
-                hBarMinValue: 1,
-                hBarMaxValue: 2,
+                hMaxValue: 100,
+                hBarMinValue: 25,
+                hBarMaxValue: 75,
                 step: 1,
                 scaled: false,
                 grabbingMultiRangeBar: false,
@@ -325,6 +328,8 @@
             // parse time from slider
             parseTime(value) {
                 const min = this.startTimestamp;
+                if (!min)
+                    return null;
                 const date = new Date(min);
                 date.setMinutes(date.getMinutes() + value);
                 date.setSeconds(0);
@@ -439,6 +444,8 @@
                     this.lastTimestamp = this.$store.state.positions[this.$store.state.positions.length-1].timestamp;
                     this.posList = this.$store.state.positions;
                     this.posListScaled = this.posList;
+
+                    this.resetScale();
                 }
             },
             resetScale() {
@@ -519,6 +526,9 @@
                         this.lastTimestamp = this.posList[this.$store.state.positions.length-1]?.timestamp;
 
                         this.numberOfMinutes = Math.ceil((this.lastTimestamp - this.startTimestamp) / 1000 / 60);
+                        // this.step = Math.floor((this.numberOfMinutes - 1) / 10) + 1;
+                        // console.log(this.numberOfMinutes, this.step);
+
                         this.hMaxValue = this.numberOfMinutes;
                         if (!this.scaled) {
                             this.hBarMinValue = 0;
@@ -556,9 +566,13 @@
         computed: {
             hoursLabel() {
                 const labels = [];
-                for (let i = 0; i < this.numberOfMinutes+1; i+=this.step) {
+                for (let i = 0; i < this.numberOfMinutes+this.step; i+=this.step) {
                     const date = this.parseTime(i);
+                    if (!date)
+                       continue;
+
                     const label = date.toLocaleTimeString('pt-PT', {hour: '2-digit', minute: '2-digit'});
+                    
                     labels.push(label);
                 }
 
@@ -614,6 +628,7 @@
 <style>
     body {
         overflow-x: hidden;
+        font-family: 'Avenir LT Std', sans-serif;
     }
 
     #main-map path.leaflet-interactive, #map path.leaflet-interactive {
@@ -671,15 +686,15 @@
     }
 
     .history-slider-extended {
-        height: 40px !important;
+        /* height: 40px !important; */
     }
 
     .history-slider-extended::-webkit-slider-thumb {
-        height: 40px !important;
+        /* height: 40px !important; */
     }
 
     .history-slider-extended::-moz-range-thumb {
-        height: 40px !important;
+        /* height: 40px !important; */
     }
 
     .history-slider {
@@ -743,7 +758,7 @@
         position: absolute;
         padding: 5px 10px;
         border-radius: 10px;
-        top: 55px;
+        top: 65px;
     }
 
     .info-wrapper > div:last-child {
@@ -769,6 +784,40 @@
         left: 0;
         right: 0;
         margin: auto;
+    }
+
+    .info-times {
+        position: absolute;
+        top: 43px;
+        width: 97%;
+        align-content: space-between;
+        display: flex;
+        right: 28px;
+        color: #d3d3d3;
+        transition: 0.2s;
+        -webkit-transition: 0.2s;
+    }
+
+    .info-times div {
+        width: 100%;
+    }
+
+    .info-times div:first-child {
+        text-align: left;
+    }
+
+    .info-times div:last-child {
+        text-align: right;
+    }
+
+    .info-times-adjusted-right, .info-times-adjusted-left {
+        display: inherit !important;
+    }
+
+    .info-times-adjusted-right div:last-child,
+    .info-times-adjusted-left div:first-child {
+        margin-top: 80px;
+        font-weight: bold;
     }
 
     .history-buttons {
@@ -887,6 +936,15 @@
     .history:hover #history {
         border-bottom-left-radius: 0;
         border-bottom-right-radius: 0;
+    }
+
+    .history:hover .info-times > div {
+        color: #414141;
+    }
+
+    .history:hover .info-times-adjusted-left div:first-child,
+    .history:hover .info-times-adjusted-right div:last-child {
+        color: #d3d3d3 !important;
     }
 
     .slider-row .multi-range-slider .bar-inner {
