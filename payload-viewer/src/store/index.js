@@ -17,10 +17,16 @@ export default createStore({
 		topics: ['/telem/drone01', 'gyroscope', 'test'],
 
 		// map
+		urlTemplates: {
+			"google": 'https://mt.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+			"mapbox": `https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.png?access_token=${MAP_KEY}`,
+			"maptiler": 'https://api.maptiler.com/maps/satellite/{z}/{x}/{y}.jpg?key=FDT6XiwQcKCTV2xSelE4',
+			"openstreetmap": 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+		},
 		// urlTemplate: 'https://mt.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
 		//urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
 		//urlTemplate: 'https://api.maptiler.com/maps/satellite/{z}/{x}/{y}.jpg?key=FDT6XiwQcKCTV2xSelE4',
-		urlTemplate: `https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.png?access_token=${MAP_KEY}`,
+		//urlTemplate: `https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.png?access_token=${MAP_KEY}`,
 		// urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
 		mapAttribution: `
 			<a href="https://www.mapbox.com/about/maps/">© Mapbox </a> |

@@ -1,8 +1,27 @@
 <template>
+    <!-- MAP -->
     <div :id="this.mapContainerId"></div>
 
+    <!-- AUX BUTTONS -->
+    <div :class="`aux-buttons-back leaflet-control ${!showMenus ? 'aux-buttons-back-collapsed' : '' }`"></div>
+    <div class="aux-buttons leaflet-touch leaflet-right">
+        <div v-if="showMenus" class="center leaflet-bar leaflet-control" @click="centerPayload">
+            <a href="#" role="button" title="Find Payload"><span aria-hidden="true"><div>➤</div></span></a>
+        </div>
+        <div class="hide-menus leaflet-bar leaflet-control" @click="swapMenus">
+            <a href="#" role="button" :title="`${!showMenus ? 'Show Menus' : 'Hide Menus'}`"><span aria-hidden="true"><div :class="!showMenus ? 'no-rotation' : ''">{{ showMenus ? "+" : "≡" }}</div></span></a>
+        </div>
+    </div>
+    <div v-if="showMenus" class="maps">
+        <div :class="`map-item ${mapSelected == map.label ? 'maps-selected' : ''}`" v-for="map in maps" :key="map.label" :data-label="map.label" @click="mapSelection">
+            <div>{{ map.name }}</div>
+            <img :src="map.thumb" :alt="map.name">
+        </div>
+    </div>
+    <div class="aux-buttons-labels" style="display: none;"></div>
+    
     <!-- SLIDER -->
-    <div class="history" @mouseenter="updateChart=true" @mouseleave="updateChart=false">
+    <div :class="`history ${!showMenus ? 'history-hidden' : ''}`" @mouseenter="updateChart=true" @mouseleave="updateChart=false">
         <div class="slider-row history-info">
             <!-- DATA CONTAINER -->
             <div class="data">
@@ -16,7 +35,7 @@
                     <button @click="resetPositions">Reset</button>
                 </div>
             </div>
-            <div class="multi-range-slider-wrapper" @mousedown="multiRangeSliderMouseDown" @mouseup="multiRangeSliderMouseUp" @mousemove="multiRangeSliderMovement">
+            <div v-if="showMenus" class="multi-range-slider-wrapper" @mousedown="multiRangeSliderMouseDown" @mouseup="multiRangeSliderMouseUp" @mousemove="multiRangeSliderMovement">
                 <MultiRangeSlider
                     :min="hMinValue"
                     :max="hMaxValue"
@@ -32,7 +51,7 @@
                 />
             </div>
         </div>
-        <div class="slider-row history-slider">
+        <div v-if="showMenus" class="slider-row history-slider">
             <div class="history-buttons" ref="historyButtons">
                 <div id="play" :class="{'history-button-selected': !historyPlaying}"><img :src="playIcon" alt="Play" @click="playHistory"></div>
                 <div id="pause" :class="{'history-button-selected': historyPlaying}"><img :src="pauseIcon" alt="Pause" @click="pauseHistory"></div>
@@ -45,7 +64,7 @@
                         <div ref="infoText">{{ toolTipLabel(historyRangeLabel) }}</div>
                     </div>
                 </div>
-                <div :class="`info-times ${historyRange >= 95 ? 'info-times-adjusted-right' : historyRange <= 5 ? 'info-times-adjusted-left' : ''}`">
+                <div :class="`info-times ${historyRange >= 94 ? 'info-times-adjusted-right' : historyRange <= 6 ? 'info-times-adjusted-left' : ''}`">
                     <div>{{ startTimestamp?.toLocaleTimeString('pt-PT', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) }}</div>
                     <div>{{ $store.state.positions[this.$store.state.positions.length-1]?.timestamp?.toLocaleTimeString('pt-PT', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) }}</div>
                 </div>
@@ -71,6 +90,11 @@
     import playIcon from '@/assets/play.png';
     import pauseIcon from '@/assets/pause.png';
 
+    import mapThumbGoogle from '@/assets/map-thumb-google.png'
+    import mapThumbOSM from '@/assets/map-thumb-openstreetmap.png'
+    import mapThumbMapTiler from '@/assets/map-thumb-maptiler.png'
+    import mapThumbMapBox from '@/assets/map-thumb-mapbox.png'
+
     // import haversine from 'haversine-distance'
 
     export default {
@@ -81,6 +105,14 @@
         data(){
             return{
                 map: null,
+                maps: [
+                    { label: 'google', name: 'Google', thumb: mapThumbGoogle },
+                    { label: 'openstreetmap', name: 'Open Street Map', thumb: mapThumbOSM },
+                    { label: 'maptiler', name: 'Map Tiler', thumb: mapThumbMapTiler },
+                    { label: 'mapbox', name: 'Map Box', thumb: mapThumbMapBox }
+                ],
+                mapSelected: "mapbox",
+                mapButtonsHover: false,
                 urlTemplate: null,
                 baseLayer: null,
                 minZoom: 16,
@@ -96,7 +128,6 @@
 
                 infoPosition: 0,
                 positions: 0,
-                posList: [],
                 posListScaled: [],
 
                 density: [0],
@@ -167,6 +198,8 @@
                         colors: ['#4CAF50'],
                     },
                 },
+
+                showMenus: true,
             }
         },
         props: {
@@ -191,11 +224,8 @@
                     keyboard: false,
                 });
 
-				console.log(this.urlTemplate);
-
                 // Add Mapbox tiles layer
                 this.baseLayer = tileLayerOffline(this.urlTemplate, {
-                    attribution: this.$store.state.mapAttribution, 
                     minZoom: 3,
                     maxZoom: this.maxZoom,
                 }).addTo(this.map);
@@ -225,6 +255,11 @@
 
                 // remove top left zoom control
                 this.map.removeControl(this.map.zoomControl);
+
+                L.control.attribution({
+                    position: 'bottomleft',
+                    prefix: this.$store.state.mapAttribution
+                }).addTo(this.map);
             },
             updateMainMarker(marker) {
                 if (marker && marker.lat && marker.lng) {
@@ -320,9 +355,9 @@
             scale() {
                 const minHours = this.parseTime(this.hBarMinValue);
                 const maxHours = this.parseTime(this.hBarMaxValue);
-                const firstValue = this.posList.findIndex((pos) => pos.timestamp >= minHours);
-                const lastValue = this.posList.findIndex((pos) => pos.timestamp >= maxHours);
-                this.posListScaled = this.posList.slice(firstValue, lastValue);
+                const firstValue = this.$store.state.positions.findIndex((pos) => pos.timestamp >= minHours);
+                const lastValue = this.$store.state.positions.findIndex((pos) => pos.timestamp >= maxHours);
+                this.posListScaled = this.$store.state.positions.slice(firstValue, lastValue);
             },
 
             // parse time from slider
@@ -354,6 +389,36 @@
             //         this.density.push(distance);
             //     }
             // },
+
+            centerPayload() {
+                this.map.setView([this.payloadMarker.getLatLng().lat, this.payloadMarker.getLatLng().lng], this.maxZoom);
+            },
+
+            mapSelection(e) {
+                const label = e.target.closest(".map-item").dataset.label;
+                this.mapSelected = label;
+                this.urlTemplate = this.$store.state.urlTemplates[label] + (this.mapId != null ? '#'+this.mapId : '');
+                this.baseLayer.setUrl(this.urlTemplate);
+            },
+
+            mapButtonsLabels() {
+                const auxButtonsLabels = document.querySelector(".aux-buttons-labels");
+                auxButtonsLabels.innerHTML = "";
+
+                const labelsWrapper = document.createElement("div");
+                const buttons = Array.from(document.querySelectorAll(".leaflet-control a[role='button']")).filter(button => !button.style.display && !button.parentElement.style.display);
+                buttons.forEach((button) => {
+                    const label = button.getAttribute("title");
+                    labelsWrapper.innerHTML += `<div>${label}</div>`;
+                });
+                labelsWrapper.className = "map-labels";
+                auxButtonsLabels.appendChild(labelsWrapper);
+            },
+
+            swapMenus() {
+                this.showMenus = !this.showMenus;
+                setTimeout(() => this.mapButtonsLabels(), 100);
+            },
 
             // EVENTS
             handleInfoIn() {
@@ -442,8 +507,7 @@
 
                     this.startTimestamp = this.$store.state.positions[0].timestamp;
                     this.lastTimestamp = this.$store.state.positions[this.$store.state.positions.length-1].timestamp;
-                    this.posList = this.$store.state.positions;
-                    this.posListScaled = this.posList;
+                    this.posListScaled = this.$store.state.positions;
 
                     this.resetScale();
                 }
@@ -452,23 +516,33 @@
                 this.hBarMinValue = 0;
                 this.hBarMaxValue = this.numberOfMinutes;
                 this.scaled = false;
-                this.posListScaled = this.posList;
+                this.posListScaled = this.$store.state.positions;
             }
 		},
 		mounted() {
 			this.mapId = this.mapData ? this.mapData.id : null;
-            this.urlTemplate = this.$store.state.urlTemplate + (this.mapId != null ? '#'+this.mapId : '');
+            this.urlTemplate = this.$store.state.urlTemplates[this.mapSelected] + (this.mapId != null ? '#'+this.mapId : '');
 			this.initMap();
 
+            // put aux-buttons inside .leaflet-bottom.leaflet-right
+            const leafletBottomRight = document.querySelector(".leaflet-bottom.leaflet-right");
+            const auxButtons = document.querySelector(".aux-buttons");
+            leafletBottomRight?.insertBefore(auxButtons, leafletBottomRight.lastChild);
+            const auxButtonsBack = document.querySelector(".aux-buttons-back");
+            leafletBottomRight?.insertBefore(auxButtonsBack, leafletBottomRight.firstChild);
+            this.mapButtonsLabels();
+
             const marker = this.$store.state.payloadMarker;
-            this.updateMainMarker(marker);
+            if (marker) {
+                this.updateMainMarker(marker);
+                setTimeout(() => this.map.setView([marker.lat, marker.lng], this.maxZoom), 1000);
+            }
             
             this.updateInfoPosition();
 
-            this.posList = this.$store.state.positions;
-            this.posListScaled = this.posList;
-            this.startTimestamp = this.posList[0]?.timestamp;
-            this.lastTimestamp = this.posList[this.$store.state.positions.length-1]?.timestamp;
+            this.posListScaled = this.$store.state.positions;
+            this.startTimestamp = this.$store.state.positions[0]?.timestamp;
+            this.lastTimestamp = this.$store.state.positions[this.$store.state.positions.length-1]?.timestamp;
 
             window.addEventListener('keydown', (e) => {
                 if (e.key == ' ') {
@@ -511,19 +585,32 @@
                 }
 
             });
+            
+            window.addEventListener('resize', () => {
+                this.updateInfoPosition();
+            });
 
+            window.addEventListener('mouseover', e => {
+                if (e.target.closest(".leaflet-bottom.leaflet-right")) {
+                    this.mapButtonsHover = true;
+                }
+            });
 
+            window.addEventListener('mouseout', e => {
+                if (e.target.closest(".leaflet-bottom.leaflet-right")) {
+                    this.mapButtonsHover = false;
+                }
+            });
 		},
         watch: {
             '$store.state.payloadMarker': {
                 handler(marker) {
                     if (this.live) {
-                        this.posList = this.$store.state.positions;
                         this.updateMainMarker(marker);
-                        this.updateTrail(this.posList);
+                        this.updateTrail(this.$store.state.positions);
 
-                        this.startTimestamp = this.posList[0]?.timestamp;
-                        this.lastTimestamp = this.posList[this.$store.state.positions.length-1]?.timestamp;
+                        this.startTimestamp = this.$store.state.positions[0]?.timestamp;
+                        this.lastTimestamp = this.$store.state.positions[this.$store.state.positions.length-1]?.timestamp;
 
                         this.numberOfMinutes = Math.ceil((this.lastTimestamp - this.startTimestamp) / 1000 / 60);
                         // this.step = Math.floor((this.numberOfMinutes - 1) / 10) + 1;
@@ -533,7 +620,7 @@
                         if (!this.scaled) {
                             this.hBarMinValue = 0;
                             this.hBarMaxValue = this.numberOfMinutes;
-                            this.posListScaled = this.posList;
+                            this.posListScaled = this.$store.state.positions;
                         }
                         else {
                             this.scale();
@@ -561,7 +648,25 @@
             //         const value = this.density.slice(0);
             //         this.series[0].data = value;
             //     }
-            // }
+            // },
+            showMenus(show) {
+                if (!show) {
+                    document.querySelector(".leaflet-control-zoom").style.display = "none";
+                    document.querySelector(".leaflet-control-zoom-fullscreen").style.display = "none";
+                }
+                else {
+                    document.querySelector(".leaflet-control-zoom").style.removeProperty("display");
+                    document.querySelector(".leaflet-control-zoom-fullscreen").style.removeProperty("display");
+                }
+            },
+            mapButtonsHover(hover) {
+                if (hover) {
+                    document.querySelector(".aux-buttons-labels").style.removeProperty("display");
+                }
+                else {
+                    document.querySelector(".aux-buttons-labels").style.display = "none";
+                }
+            }
         },
         computed: {
             hoursLabel() {
@@ -635,14 +740,51 @@
         pointer-events: none !important;
     }
 
+    .no-rotation {
+        rotate: unset !important;
+    }
+
     .drone-polyline {
         z-index: 5000 !important;
     }
 
     .leaflet-control-zoom-fullscreen::after {
         content: '⤡';
-        font-size: 20px;
+        font-size: 30px;
         font-weight: bold;
+    }
+
+    .leaflet-touch .leaflet-bar a {
+        color: #4CAF50;
+        width: 45px;
+        height: 45px;
+        line-height: 45px;
+        background-color: #d3d3d3;
+        opacity: 0.7;
+    }
+
+    .leaflet-touch .leaflet-bar {
+        border: unset;
+    }
+
+    .leaflet-touch .leaflet-bar a:not(.leaflet-disabled):hover {
+        opacity: 1;
+    }
+
+    .leaflet-touch .leaflet-bar a span {
+        font-size: 30px !important;
+    }
+
+    .leaflet-touch .leaflet-bar a:last-child {
+        border-radius: 0 0 5px 5px;
+    }
+
+    .leaflet-touch .leaflet-bar a:first-child {
+        border-radius: 5px 5px 0 0;
+    }
+
+    .leaflet-control-zoom-fullscreen {
+        border-radius: 5px !important;
     }
 
     .history {
@@ -758,7 +900,7 @@
         position: absolute;
         padding: 5px 10px;
         border-radius: 10px;
-        top: 65px;
+        top: 55px;
     }
 
     .info-wrapper > div:last-child {
@@ -800,6 +942,8 @@
 
     .info-times div {
         width: 100%;
+        transition: 0.2s;
+        -webkit-transition: 0.2s;
     }
 
     .info-times div:first-child {
@@ -816,8 +960,7 @@
 
     .info-times-adjusted-right div:last-child,
     .info-times-adjusted-left div:first-child {
-        margin-top: 80px;
-        font-weight: bold;
+        margin-top: 70px;
     }
 
     .history-buttons {
@@ -859,6 +1002,7 @@
         align-items: center;
         column-gap: 30px;
         border-radius: 10px;
+        min-height: 60px;
     }
 
     .data .item {
@@ -925,12 +1069,8 @@
         display: unset;
     }
 
-    .history:hover .history-buttons > div {
-        filter: drop-shadow(0px 0px 10px rgba(0,0,0,0.5));
-    }
-
     .history:hover {
-        background-color: rgba(255,255,255,0.6);
+        background-color: white;
     }
 
     .history:hover #history {
@@ -945,6 +1085,10 @@
     .history:hover .info-times-adjusted-left div:first-child,
     .history:hover .info-times-adjusted-right div:last-child {
         color: #d3d3d3 !important;
+    }
+
+    .history-hidden {
+        background-color: unset !important;
     }
 
     .slider-row .multi-range-slider .bar-inner {
@@ -993,6 +1137,142 @@
 
     .slider-wrapper:hover #densityChart {
         top: 18px !important;
+    }
+
+    .aux-buttons {
+        font-weight: bold;
+    }
+
+    .aux-buttons .leaflet-bar > a {
+        border-radius: 5px !important;
+    }
+
+    .aux-buttons .center div {
+        rotate: -45deg;
+        line-height: 40px;
+    }
+
+    .aux-buttons .hide-menus div {
+        rotate: 45deg;
+        font-size: 35px;
+    }
+
+    .aux-buttons-back {
+        background-color: white;
+        bottom: 0;
+        right: 0;
+        position: absolute;
+        width: 70px;
+        height: 285px;
+        border-top-left-radius: 10px;
+        transition: 0.2s;
+        -webkit-transition: 0.2s;
+        opacity: 0;
+        margin: unset !important;
+    }
+
+    .aux-buttons-back-collapsed {
+        height: 75px;
+    }
+
+    .leaflet-bottom.leaflet-right:hover .aux-buttons-back,
+    .leaflet-bottom.leaflet-right:hover .leaflet-bar a:not(.leaflet-disabled) {
+        opacity: 1 !important;
+    }
+
+    .leaflet-bar a:not(.leaflet-disabled):hover {
+        background-color: #4CAF50;
+        color: #d3d3d3;
+    }   
+
+    .leaflet-control-attribution {
+        padding: 5px 10px;
+        background-color: #d3d3d3;
+    }
+
+    .leaflet-control-attribution a {
+        color: #4CAF50;
+    }
+
+    .leaflet-bottom.leaflet-right .leaflet-control-attribution {
+        display: none;
+    }
+
+    .maps {
+        display: flex;
+        position: absolute;
+        right: 70px;
+        bottom: 9px;
+        column-gap: 10px;
+        background-color: #d3d3d3;
+        padding: 10px;
+        border-radius: 5px;
+        opacity: 0.7;
+        z-index: 10;
+        transition: 0.2s;
+        -webkit-transition: 0.2s;
+    }
+
+    .maps .map-item {
+        opacity: 0.7;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        row-gap: 5px;
+    }
+
+    .maps .map-item > div {
+        font-size: 10px;
+        text-align: center;
+        color: #555;
+    }
+
+    .maps .map-item img {
+        width: 100px;
+        border-radius: 10px;
+    }
+
+    .maps:hover,
+    .maps .map-item:hover,
+    .maps-selected {
+        opacity: 1 !important;
+    }
+
+    .maps .map-item:hover {
+        font-weight: bold;
+    }
+
+    .maps-selected > div {
+        font-weight: bold;
+    }
+
+    .maps:hover {
+        background-color: white;
+    }
+
+    .map-labels {
+        position: absolute;
+        right: 70px;
+        width: fit-content;
+        text-align: right;
+        white-space: nowrap;
+        display: flex;
+        flex-direction: column;
+        row-gap: 33px;
+        bottom: 11px;
+        background-color: white;
+        transition: 0.2s;
+        -webkit-transition: 0.2s;
+        padding: 16px;
+        padding-left: 20px;
+        color: #45a049;
+        font-weight: bold;
+        border-radius: 10px 0 0 10px;
+        z-index: 20;
+    }
+
+    .map-labels div {
+
     }
 
 </style>
