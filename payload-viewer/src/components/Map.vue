@@ -5,14 +5,25 @@
     <!-- AUX BUTTONS -->
     <div :class="`aux-buttons-back leaflet-control ${!showMenus ? 'aux-buttons-back-collapsed' : '' }`"></div>
     <div class="aux-buttons leaflet-touch leaflet-right">
+        <div v-if="showMenus" :class="`leaflet-bar leaflet-control ${followPayload ? 'aux-buttons-selected' : ''}`" @click="handleFollow">
+            <a href="#" role="button" title="Follow Payload"><span aria-hidden="true"><div>⊹</div></span></a>
+        </div>
         <div v-if="showMenus" class="center leaflet-bar leaflet-control" @click="centerPayload">
             <a href="#" role="button" title="Find Payload"><span aria-hidden="true"><div>➤</div></span></a>
+        </div>
+        <div v-if="showMenus" :class="`leaflet-bar leaflet-control ${fullTrail ? 'aux-buttons-selected' : ''}`" @click="fullTrail = !fullTrail">
+            <a href="#" role="button" title="Show Full Trail"><span aria-hidden="true"><div>↯</div></span></a>
+        </div>
+        <div v-if="showMenus" :class="`leaflet-bar leaflet-control ${choosingMap ? 'aux-buttons-selected' : ''}`" @click="choosingMap = !choosingMap">
+            <a href="#" role="button" title="Choose Map"><span aria-hidden="true"><div>🗺️</div></span></a>
         </div>
         <div class="hide-menus leaflet-bar leaflet-control" @click="swapMenus">
             <a href="#" role="button" :title="`${!showMenus ? 'Show Menus' : 'Hide Menus'}`"><span aria-hidden="true"><div :class="!showMenus ? 'no-rotation' : ''">{{ showMenus ? "+" : "≡" }}</div></span></a>
         </div>
     </div>
-    <div v-if="showMenus" class="maps">
+
+    <!-- MAP CHOOSER -->
+    <div v-if="showMenus && choosingMap" class="maps">
         <div :class="`map-item ${mapSelected == map.label ? 'maps-selected' : ''}`" v-for="map in maps" :key="map.label" :data-label="map.label" @click="mapSelection">
             <div>{{ map.name }}</div>
             <img :src="map.thumb" :alt="map.name">
@@ -76,6 +87,21 @@
             </div>
         </div>
     </div>
+
+    <!-- ALTITUDE METER -->
+    <div class="altitude-meter">
+        <div class="meter-value">{{ payload.alt.toFixed(2) + " m" }}</div>
+        <div class="meter">
+            <div class="meter-body">
+                <div class="meter-section" v-for="i in 11">
+                    <div>{{ i-1 }}</div>
+                </div>
+            </div>
+            <input type="range" min="0" max="10000" v-model="altitudeMeterValue" disabled>
+        </div>
+        <div class="meter-legend">Meters</div>
+        <div class="meter-back"></div>
+    </div>
 </template>
 
 <script>
@@ -114,14 +140,23 @@
                 mapSelected: "mapbox",
                 mapButtonsHover: false,
                 urlTemplate: null,
+                choosingMap: false,
                 baseLayer: null,
                 minZoom: 16,
                 maxZoom: 20,
                 mapData: this.$store.state.targetMap,
                 mapId: null,
                 payloadMarker: null,
+                payload: {
+                    lat: 0,
+                    lng: 0,
+                    alt: 0,
+                },
                 trail: null,
+                trailSize: 100,
                 trails: [],
+                fullTrail: false,
+                followPayload: false,
 
                 live: true,
                 historyRange: 100,
@@ -260,6 +295,11 @@
                     position: 'bottomleft',
                     prefix: this.$store.state.mapAttribution
                 }).addTo(this.map);
+
+                // drag event listener
+                this.map.on('drag', () => {
+                    this.followPayload = false;
+                });
             },
             updateMainMarker(marker) {
                 if (marker && marker.lat && marker.lng) {
@@ -277,31 +317,33 @@
                 }
             },
             historyTrail(positions, index) {
-                console.log(positions, index);
                 positions = positions.slice(0, index+1);
                 
                 this.positions = positions.length;
                 this.lastTimestamp = positions[positions.length-1]?.timestamp;
 
                 this.updateMainMarker(positions[positions.length-1]);
+                this.payload = positions[positions.length-1];
                 this.updateTrail(positions);
             },
-            updateTrail(positions, size=50) {
+            updateTrail(positions, size=this.trailSize) {
                 // delete old trail
                 if (this.trail) {
                     this.map.removeLayer(this.trail);
                 }
 
                 positions = positions.slice(-size);
+                // remove repeated positions
+                // positions = positions.filter((pos, index, self) => self.findIndex(p => p.lat === pos.lat && p.lng === pos.lng) === index);
 
-                this.trail = this.createPolyline(positions, 'red');
+                this.trail = this.createPolyline(positions, '#4CAF50');
             },
             createPolyline(positions, color) {
                 const trailCoords = positions.map((pos) => [pos.lat, pos.lng]);
                 const polyline = L.polyline(trailCoords, {
                     color: color,
                     weight: 3,
-                    opacity: 0.5,
+                    opacity: 1,
                     className: 'drone-polyline',
                 }).addTo(this.map);
                 // this.trails.push(polyline);
@@ -317,6 +359,8 @@
             playHistory() {
                 if (this.historyRange == 100)
                     this.historyRange = 0;
+
+                this.followPayload = false;
                 
                 let i = this.historyRange; 
                 this.historyPlaying = true;
@@ -326,7 +370,7 @@
                     console.log(positions, i);
                     this.historyTrail(positions, i);
                     this.updateInfoPosition();
-                    
+
                     this.historyRange = i++;
 
                     if (i > 100)
@@ -435,6 +479,15 @@
                     this.historyRange = 100;
                 }
             },
+            handleFollow() {
+                this.followPayload = !this.followPayload;
+                this.map.setView([this.payloadMarker.getLatLng().lat, this.payloadMarker.getLatLng().lng], this.maxZoom);
+            },
+            handleFullTrail() {
+                this.fullTrail = !this.fullTrail;
+                this.trailSize = this.fullTrail ? this.$store.state.positions.length : 100;
+                this.updateTrail(this.$store.state.positions);
+            },
             backToLive() {
                     this.pauseHistory();
                     
@@ -454,6 +507,7 @@
             handleHistoryRangeInput() {
                 this.updateChart = false;
                 this.pauseHistory();
+                this.followPayload = false;
             },
             multiRangeSliderMouseDown(e) {
                 this.grabbingMultiRangeBar = e.target.closest(".bar-inner") != null;
@@ -505,11 +559,11 @@
                     this.positions = 0;
                     this.density = [0];
 
-                    this.startTimestamp = this.$store.state.positions[0].timestamp;
-                    this.lastTimestamp = this.$store.state.positions[this.$store.state.positions.length-1].timestamp;
-                    this.posListScaled = this.$store.state.positions;
-
                     this.resetScale();
+
+                    this.startTimestamp = new Date();
+                    this.lastTimestamp = this.startTimestamp;
+                    this.posListScaled = [];
                 }
             },
             resetScale() {
@@ -532,10 +586,10 @@
             leafletBottomRight?.insertBefore(auxButtonsBack, leafletBottomRight.firstChild);
             this.mapButtonsLabels();
 
-            const marker = this.$store.state.payloadMarker;
-            if (marker) {
-                this.updateMainMarker(marker);
-                setTimeout(() => this.map.setView([marker.lat, marker.lng], this.maxZoom), 1000);
+            this.payload = this.$store.state.payloadMarker;
+            if (this.payload) {
+                this.updateMainMarker(this.payload);
+                setTimeout(() => this.map.setView([this.payload.lat, this.payload.lng], this.maxZoom), 1000);
             }
             
             this.updateInfoPosition();
@@ -605,7 +659,7 @@
         watch: {
             '$store.state.payloadMarker': {
                 handler(marker) {
-                    if (this.live) {
+                    if (this.live && this.$store.state.positions.length > 0) {
                         this.updateMainMarker(marker);
                         this.updateTrail(this.$store.state.positions);
 
@@ -627,7 +681,16 @@
                         }
 
                         this.positions = this.posListScaled.length;
+                    
                     }
+
+                    if (this.fullTrail)
+                        this.trailSize = this.$store.state.positions.length;
+                    else
+                        this.trailSize = 100;
+
+                    if (this.followPayload)
+                        this.map.setView([marker.lat, marker.lng], this.maxZoom);
                 },
                 deep: true,
             },
@@ -713,6 +776,9 @@
                 if (this.historyRange < 0+offset) className = "info-left";
                 if (this.historyRange > 100-offset) className = "info-right";
                 return className;
+            },
+            altitudeMeterValue() {
+                return this.payload.alt * 1000;
             }
         }
 		
@@ -1163,7 +1229,7 @@
         right: 0;
         position: absolute;
         width: 70px;
-        height: 285px;
+        height: 445px;
         border-top-left-radius: 10px;
         transition: 0.2s;
         -webkit-transition: 0.2s;
@@ -1180,9 +1246,10 @@
         opacity: 1 !important;
     }
 
-    .leaflet-bar a:not(.leaflet-disabled):hover {
-        background-color: #4CAF50;
-        color: #d3d3d3;
+    .leaflet-bar a:not(.leaflet-disabled):hover,
+    .aux-buttons-selected a {
+        background-color: #4CAF50 !important;
+        color: #d3d3d3 !important;
     }   
 
     .leaflet-control-attribution {
@@ -1271,8 +1338,130 @@
         z-index: 20;
     }
 
-    .map-labels div {
+    .altitude-meter {
+        z-index: 20;
+        position: absolute;
+        bottom: 105px;
+        left: 60px;
+        rotate: -90deg;
+        transform: translateX(44%) translateY(-520%);
+    }
 
+    .altitude-meter .meter {
+        width: 300px;
+    }
+
+    .altitude-meter .meter input {
+        width: 100%;
+        border-radius: 5px;
+        background-color: unset;
+        position: relative;
+        z-index: 10;
+        filter: drop-shadow(-1px 0px 1px black);
+    }
+
+    .altitude-meter .meter input::-webkit-slider-thumb {
+        -webkit-appearance: none; /* Override default look */
+        appearance: none;
+        width: 25px; /* Set a specific slider handle width */
+        height: 25px; /* Slider handle height */
+        -webkit-transition: .2s; /* 0.2 seconds transition on hover */
+        transition: .2s;
+        background: unset; /* Green background */
+    }
+
+    .altitude-meter .meter input::-moz-range-thumb {
+        width: 5px; /* Set a specific slider handle width */
+        height: 30px; /* Slider handle height */
+        background: #4CAF50; /* Green background */
+        -webkit-transition: .2s; /* 0.2 seconds transition on hover */
+        transition: .2s;
+        border: unset;
+    }
+
+    .altitude-meter .meter input::-moz-range-progress {
+        background-color: unset;
+        height: 100%;
+        border-top-left-radius: 5px;
+        border-bottom-left-radius: 5px;
+    }
+
+    .altitude-meter .meter .meter-body {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        bottom: 2px;
+        display: flex;
+        flex-direction: row;
+        column-gap: 27px;
+        z-index: 9;
+    }
+
+    .altitude-meter .meter .meter-body .meter-section {
+        width: 100%;
+        background-color: #d3d3d3;
+    }
+
+    .altitude-meter .meter .meter-body .meter-section:first-child,
+    .altitude-meter .meter .meter-body .meter-section:last-child,
+    .altitude-meter .meter .meter-body .meter-section:nth-child(6) {
+        height: 140%;
+        width: 200%;
+    }
+
+    .altitude-meter .meter .meter-body .meter-section > div {
+        rotate: 90deg;
+        position: absolute;
+        top: -35px;
+        margin-left: -5px;
+        color: #d3d3d3;
+        font-size: 15px;
+        opacity: 0.6;
+    }
+
+    .altitude-meter .meter .meter-body .meter-section:first-child > div,
+    .altitude-meter .meter .meter-body .meter-section:last-child > div,
+    .altitude-meter .meter .meter-body .meter-section:nth-child(6) > div {
+        font-size: 16px;
+        font-weight: bold;
+        opacity: 1;
+    }
+
+    .altitude-meter .meter-legend {
+        position: absolute;
+        rotate: 90deg;
+        bottom: 17px;
+        left: -60px;
+        color: white;
+    }
+
+    .altitude-meter .meter-back {
+        position: absolute;
+        width: 127%;
+        height: 375%;
+        background-color: rgba(255,255,255,0.2);
+        border-bottom-left-radius: 5px;
+        border-top-left-radius: 5px;
+        z-index: 1;
+        top: -50px;
+        right: -30px;
+        border-left: 2px solid white;
+    }
+
+    .altitude-meter .meter-value {
+        position: absolute;
+        background-color: #4CAF50;
+        color: white;
+        rotate: 90deg;
+        right: -100px;
+        top: -25px;
+        border-top-right-radius: 5px;
+        border-top-left-radius: 5px;
+        height: 44px;
+        line-height: 44px;
+        width: 95px;
+        text-align: center;
+        border-bottom: 2px solid white;
     }
 
 </style>

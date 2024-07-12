@@ -7,6 +7,7 @@ export default createStore({
 		payloadMarker: {
 			lat: 40.63493931,
 			lng: -8.65992687,
+			alt: 0
 		},
 		
 		home: {
@@ -42,13 +43,17 @@ export default createStore({
 			data = data['coords']
 			const lat = data[0]
 			const lng = data[1]
+			let alt = data[2] - 8.16
+			alt = alt < 0 ? 0 : alt
 
 			state.payloadMarker.lat = lat
 			state.payloadMarker.lng = lng
+			state.payloadMarker.alt = alt
 
 			const position = {
 				lat: lat,
 				lng: lng,
+				alt: alt,
 				timestamp: new Date()
 			}
 			
